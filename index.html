@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crossing Alert Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#e8e6e0;--fg:#1d2026;--card:#f6f5f1;--mut:#59606b;--line:#c9c6bd;--road:#2a2d33;--paint:#f4f2ea;--amber:#ffb000;--ok:#1f6b45;--bad:#b3261e;--walk:#1d5fd1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161a;--fg:#ecebe6;--card:#1e2126;--mut:#9aa1ac;--line:#33373e;--road:#0c0d10;--paint:#d8d6cc;--walk:#6aa2ff;--ok:#5fcf97;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#14161a;--fg:#ecebe6;--card:#1e2126;--mut:#9aa1ac;--line:#33373e;--road:#0c0d10;--paint:#d8d6cc;--walk:#6aa2ff;--ok:#5fcf97;--bad:#ff8a80}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:500 16px/1.45 Barlow,system-ui,sans-serif;padding:16px;max-width:560px;margin-inline:auto}
+h1{font:700 30px/1.05 "Barlow Condensed",Impact,sans-serif;margin:4px 0 2px}
+p{margin:0}.mut{color:var(--mut);font-size:14px}
+.tabs{display:flex;gap:8px;margin:14px 0}
+.tabs button{flex:1;padding:12px;border:2px solid var(--line);background:transparent;color:var(--fg);font:600 16px Barlow,sans-serif;border-radius:10px}
+.tabs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+button.act{width:100%;padding:14px;border-radius:10px;border:0;background:var(--walk);color:#fff;font:600 17px Barlow,sans-serif;margin-top:8px}
+button.alt{background:transparent;color:var(--fg);border:2px solid var(--line)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+label{display:flex;justify-content:space-between;gap:10px;font-weight:600}
+input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--walk)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+svg{width:100%;height:auto;display:block;border-radius:10px}
+#status{font:700 22px "Barlow Condensed",sans-serif;margin-bottom:6px}
+#log{font-size:14px;max-height:150px;overflow:auto;margin:0;padding-left:18px}
+#log li{margin:2px 0}
+#ov{position:fixed;inset:0;z-index:50;background:repeating-linear-gradient(-45deg,#ffb000 0 28px,#1a1a1a 28px 56px);display:flex;align-items:center;justify-content:center;padding:20px}
+#ov[hidden]{display:none}
+#ov>div{background:#1a1a1a;color:#fff;border:4px solid #ffb000;border-radius:14px;padding:24px;text-align:center;max-width:420px;animation:p .6s infinite alternate}
+#ov h2{font:700 44px/1 "Barlow Condensed",sans-serif;margin:0 0 8px;color:#ffb000}
+#ov button{width:100%;margin-top:16px;padding:16px;border:0;border-radius:10px;background:#ffb000;color:#1a1a1a;font:700 18px Barlow,sans-serif}
+@keyframes p{to{transform:scale(1.03)}}
+@media (prefers-reduced-motion:reduce){#ov>div{animation:none}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<h1>Crossing Alert</h1>
+<p class="mut">Prototype: warns a distracted walker before a street crossing.</p>
+
+<div class="tabs" role="group" aria-label="Mode">
+  <button id="tSim" aria-pressed="true">Simulated walk</button>
+  <button id="tReal" aria-pressed="false">Real GPS</button>
+</div>
+
+<div class="box">
+  <label for="dist">Alert distance <span id="distV">10 ft</span></label>
+  <input id="dist" type="range" min="5" max="100" step="5" value="10">
+  <p class="mut">Phone GPS is usually only accurate to 15–30 ft, so 10 ft will often fire late or not at all outdoors. Try 30–60 ft for real walks.</p>
+</div>
+
+<section id="sim">
+  <div class="box">
+    <div id="status">Ready</div>
+    <svg viewBox="0 0 360 150" role="img" aria-label="Top-down view of a walker approaching a street crossing">
+      <rect width="360" height="150" fill="var(--card)"/>
+      <rect x="0" y="52" width="250" height="46" fill="#9b9890" opacity=".45"/>
+      <rect x="250" y="0" width="70" height="150" fill="var(--road)"/>
+      <g fill="var(--paint)"><rect x="254" y="56" width="62" height="6"/><rect x="254" y="68" width="62" height="6"/><rect x="254" y="80" width="62" height="6"/><rect x="254" y="92" width="62" height="6"/></g>
+      <g fill="var(--paint)" opacity=".7"><rect x="283" y="4" width="4" height="20"/><rect x="283" y="34" width="4" height="12"/><rect x="283" y="104" width="4" height="14"/><rect x="283" y="128" width="4" height="18"/></g>
+      <line id="zone" x1="250" x2="250" y1="40" y2="110" stroke="#ffb000" stroke-width="3" stroke-dasharray="5 4"/>
+      <circle id="walker" cx="40" cy="75" r="9" fill="var(--walk)"/>
+      <text id="wlabel" x="40" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="var(--fg)">looking up</text>
+    </svg>
+    <p class="mut" id="simInfo" style="margin-top:6px"></p>
+  </div>
+  <div class="box">
+    <label for="spd">Walking speed <span id="spdV">1.4 m/s</span></label>
+    <input id="spd" type="range" min="0" max="2.2" step="0.1" value="1.4">
+    <div class="row">
+      <button class="act alt" id="look">Phone use: off</button>
+      <button class="act" id="go">Start walk</button>
+    </div>
+    <p class="mut" style="margin-top:8px">Turn phone use on, then walk toward the road. The alert ends when you slow down to a stop or tap to confirm.</p>
+  </div>
+</section>
+
+<section id="real" hidden>
+  <div class="box">
+    <div id="rstatus">Not started</div>
+    <p class="mut" id="gps">GPS: waiting</p>
+    <p class="mut" id="rinfo"></p>
+    <button class="act" id="rgo">Start sensors</button>
+    <button class="act alt" id="mark" disabled>Mark crossing at my spot</button>
+    <button class="act alt" id="clear">Clear marked crossings</button>
+    <label style="margin-top:12px;font-weight:500"><span>Treat me as looking down (indoor testing)</span><input type="checkbox" id="force"></label>
+    <p class="mut" style="margin-top:8px">Stand at a curb, tap Mark, walk away, then walk back toward it while holding the phone tilted down. Looking down is detected by phone tilt. Keep this page open and the screen on.</p>
+  </div>
+</section>
+
+<div class="box"><p style="font-weight:600">Event log</p><ol id="log"></ol></div>
+
+<div id="ov" hidden role="alertdialog" aria-live="assertive">
+  <div><h2>Stop. Street ahead.</h2><p>Look up before you step off the curb.</p><button id="ack">I’m aware. I’ll stop</button></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id), FT=0.3048;
+let mode='sim', actx, beepT, last=0, raf;
+const S={d:30,run:false,look:false,alert:false,armed:true,fired:false,entered:false,v:1.4};
+
+function log(m){const li=document.createElement('li');li.textContent=m;$('log').prepend(li);while($('log').children.length>30)$('log').lastChild.remove()}
+function unlock(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();actx.resume&&actx.resume()}catch(e){}}
+function beep(){if(!actx)return;try{const o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.value=880;g.gain.value=.2;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+.28)}catch(e){}}
+function buzz(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
+function startAlert(){
+  if(S.alert)return;S.alert=true;S.fired=true;$('ov').hidden=false;
+  log('Alert fired: sound, vibration, full-screen warning');
+  beep();buzz([400,150,400,150,400]);
+  beepT=setInterval(()=>{beep();buzz([400,150,400])},1000);
+}
+function endAlert(why){
+  if(!S.alert)return;S.alert=false;$('ov').hidden=true;clearInterval(beepT);buzz(0);log('Alert ended: '+why);
+}
+$('ack').onclick=()=>endAlert('walker tapped to confirm');
+
+// shared rule: fire only if near crossing, looking down, and not slowing
+function evaluate(dist,speed,looking){
+  const lim=+$('dist').value*FT;
+  if(dist>lim+8)S.armed=true;
+  if(S.alert){if(speed<0.5)endAlert('walker slowed to a stop');return}
+  if(S.armed&&dist<=lim&&dist>-1&&looking&&speed>=0.8){S.armed=false;startAlert()}
+}
+
+$('dist').oninput=e=>$('distV').textContent=e.target.value+' ft';
+$('spd').oninput=e=>$('spdV').textContent=(+e.target.value).toFixed(1)+' m/s';
+
+// ---------- mode tabs
+function setMode(m){
+  mode=m;$('sim').hidden=m!=='sim';$('real').hidden=m!=='real';
+  $('tSim').setAttribute('aria-pressed',m==='sim');$('tReal').setAttribute('aria-pressed',m==='real');
+  endAlert('mode changed');
+}
+$('tSim').onclick=()=>setMode('sim');$('tReal').onclick=()=>setMode('real');
+
+// ---------- simulated walk (7 px per meter)
+function draw(){
+  const x=250-S.d*7;$('walker').setAttribute('cx',x);$('wlabel').setAttribute('x',Math.max(34,Math.min(x,320)));
+  $('wlabel').textContent=S.look?'looking down':'looking up';
+  const lim=+$('dist').value*FT;$('zone').setAttribute('x1',250-lim*7);$('zone').setAttribute('x2',250-lim*7);
+  $('simInfo').textContent='Distance to road: '+Math.max(0,S.d/FT).toFixed(0)+' ft · Alert zone starts '+$('dist').value+' ft out';
+}
+function tick(t){
+  const dt=Math.min((t-last)/1000||0,.1);last=t;
+  if(S.run){
+    S.v=+$('spd').value;S.d-=S.v*dt;
+    evaluate(S.d,S.v,S.look);
+    if(S.d<0&&!S.entered){S.entered=true;log(S.fired?'Walker entered the road after an alert':'Walker entered the road with NO alert')}
+    if(S.d<-8){S.run=false;$('go').textContent='Start walk';setStatus('Crossed the road')}
+    else setStatus(S.alert?'ALERT: street ahead':S.d<0?'In the roadway':'Walking')
+    draw();
+  }
+  raf=requestAnimationFrame(tick);
+}
+function setStatus(s){$('status').textContent=s}
+function reset(){endAlert('reset');Object.assign(S,{d:30,armed:true,fired:false,entered:false,run:false});$('go').textContent='Start walk';setStatus('Ready');draw()}
+$('go').onclick=()=>{
+  unlock();
+  if(S.run){reset();return}
+  reset();S.run=true;$('go').textContent='Reset';log('Walk started. Phone use '+(S.look?'on':'off'));
+};
+$('look').onclick=()=>{S.look=!S.look;$('look').textContent='Phone use: '+(S.look?'on':'off');draw()};
+
+// ---------- real GPS mode
+let crossings=[],here=null,prev=null,tilt=false,wid=null,sensing=false;
+const SKEY='crossings';
+try{crossings=JSON.parse(localStorage.getItem(SKEY)||'[]')}catch(e){crossings=[]}
+function save(){try{localStorage.setItem(SKEY,JSON.stringify(crossings))}catch(e){}}
+function meters(a,b){const k=Math.cos(a.lat*Math.PI/180);return Math.hypot((b.lon-a.lon)*111320*k,(b.lat-a.lat)*110540)}
+function info(){$('rinfo').textContent=crossings.length+' crossing(s) marked'}
+info();
+$('clear').onclick=()=>{crossings=[];save();info();log('Cleared marked crossings')};
+$('mark').onclick=()=>{if(!here)return;crossings.push({lat:here.lat,lon:here.lon});save();info();log('Marked a crossing here')};
+function onOrient(e){tilt=e.beta!=null&&e.beta>5&&e.beta<65}
+$('rgo').onclick=async()=>{
+  unlock();
+  if(sensing){stopReal();return}
+  try{
+    if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      const r=await DeviceOrientationEvent.requestPermission();if(r!=='granted')log('Motion permission denied; use the looking-down checkbox')
+    }
+  }catch(e){log('Motion sensors unavailable; use the looking-down checkbox')}
+  addEventListener('deviceorientation',onOrient);
+  try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}
+  if(!navigator.geolocation){$('gps').textContent='GPS not supported here';return}
+  wid=navigator.geolocation.watchPosition(onPos,err=>{$('gps').textContent='GPS error: '+err.message},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  sensing=true;$('rgo').textContent='Stop sensors';$('mark').disabled=false;log('Sensors started');
+};
+function stopReal(){
+  if(wid!=null)navigator.geolocation.clearWatch(wid);removeEventListener('deviceorientation',onOrient);
+  sensing=false;wid=null;$('rgo').textContent='Start sensors';$('mark').disabled=true;endAlert('sensors stopped');$('rstatus').textContent='Not started';
+}
+function onPos(p){
+  const c=p.coords,now={lat:c.latitude,lon:c.longitude,t:p.timestamp};
+  let v=c.speed;
+  if(v==null&&prev){const dt=(now.t-prev.t)/1000;if(dt>0)v=meters(prev,now)/dt}
+  v=v||0;prev=now;here=now;
+  $('gps').textContent='GPS ±'+Math.round(c.accuracy/FT)+' ft · speed '+v.toFixed(1)+' m/s · tilt '+(tilt?'looking down':'looking up');
+  if(!crossings.length){$('rstatus').textContent='Mark a crossing to begin';return}
+  const dist=Math.min(...crossings.map(x=>meters(now,x)));
+  const looking=tilt||$('force').checked;
+  $('rstatus').textContent=S.alert?'ALERT: street ahead':'Nearest crossing: '+Math.round(dist/FT)+' ft';
+  evaluate(dist,v,looking);
+}
+
+setMode('sim');draw();raf=requestAnimationFrame(tick);
+</script>
+</body>
+</html>
