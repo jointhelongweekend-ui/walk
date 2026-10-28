@@ -88,8 +88,9 @@ svg{width:100%;height:auto;display:block;border-radius:10px}
     <button class="act" id="rgo">Start sensors</button>
     <button class="act alt" id="mark" disabled>Mark crossing at my spot</button>
     <button class="act alt" id="clear">Clear marked crossings</button>
+    <label style="margin-top:12px;font-weight:500"><span>Auto-load crossings from OpenStreetMap</span><input type="checkbox" id="auto" checked></label>
     <label style="margin-top:12px;font-weight:500"><span>Treat me as looking down (indoor testing)</span><input type="checkbox" id="force"></label>
-    <p class="mut" style="margin-top:8px">Stand at a curb, tap Mark, walk away, then walk back toward it while holding the phone tilted down. Looking down is detected by phone tilt. Keep this page open and the screen on.</p>
+    <p class="mut" style="margin-top:8px">Crossings near you load automatically as you walk. You can also tap Mark to add one yourself. Hold the phone tilted down to test the alert. Looking down is detected by phone tilt. Keep this page open and the screen on.</p>
   </div>
 </section>
 
@@ -167,12 +168,12 @@ $('go').onclick=()=>{
 $('look').onclick=()=>{S.look=!S.look;$('look').textContent='Phone use: '+(S.look?'on':'off');draw()};
 
 // ---------- real GPS mode
-let crossings=[],here=null,prev=null,tilt=false,wid=null,sensing=false;
+let crossings=[],here=null,prev=null,tilt=false,wid=null,sensing=false,osm=[],lastLoad=null,loading=false;
 const SKEY='crossings';
 try{crossings=JSON.parse(localStorage.getItem(SKEY)||'[]')}catch(e){crossings=[]}
 function save(){try{localStorage.setItem(SKEY,JSON.stringify(crossings))}catch(e){}}
 function meters(a,b){const k=Math.cos(a.lat*Math.PI/180);return Math.hypot((b.lon-a.lon)*111320*k,(b.lat-a.lat)*110540)}
-function info(){$('rinfo').textContent=crossings.length+' crossing(s) marked'}
+function info(){$('rinfo').textContent=crossings.length+' marked by you · '+osm.length+' loaded from OpenStreetMap'}
 info();
 $('clear').onclick=()=>{crossings=[];save();info();log('Cleared marked crossings')};
 $('mark').onclick=()=>{if(!here)return;crossings.push({lat:here.lat,lon:here.lon});save();info();log('Marked a crossing here')};
@@ -195,14 +196,29 @@ function stopReal(){
   if(wid!=null)navigator.geolocation.clearWatch(wid);removeEventListener('deviceorientation',onOrient);
   sensing=false;wid=null;$('rgo').textContent='Start sensors';$('mark').disabled=true;endAlert('sensors stopped');$('rstatus').textContent='Not started';
 }
+async function loadOSM(p){
+  if(!$('auto').checked||loading)return;
+  if(lastLoad&&meters(lastLoad,p)<100)return;
+  loading=true;lastLoad={lat:p.lat,lon:p.lon};
+  try{
+    const q='[out:json][timeout:15];node(around:250,'+p.lat+','+p.lon+')["highway"="crossing"];out;';
+    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    const j=await r.json();
+    osm=j.elements.map(e=>({lat:e.lat,lon:e.lon}));
+    info();log('Loaded '+osm.length+' crossings from OpenStreetMap');
+  }catch(e){log('Could not load crossings: '+e.message)}
+  loading=false;
+}
 function onPos(p){
   const c=p.coords,now={lat:c.latitude,lon:c.longitude,t:p.timestamp};
   let v=c.speed;
   if(v==null&&prev){const dt=(now.t-prev.t)/1000;if(dt>0)v=meters(prev,now)/dt}
   v=v||0;prev=now;here=now;
   $('gps').textContent='GPS ±'+Math.round(c.accuracy/FT)+' ft · speed '+v.toFixed(1)+' m/s · tilt '+(tilt?'looking down':'looking up');
-  if(!crossings.length){$('rstatus').textContent='Mark a crossing to begin';return}
-  const dist=Math.min(...crossings.map(x=>meters(now,x)));
+  loadOSM(now);
+  const all=crossings.concat(osm);
+  if(!all.length){$('rstatus').textContent='Looking for crossings nearby…';return}
+  const dist=Math.min(...all.map(x=>meters(now,x)));
   const looking=tilt||$('force').checked;
   $('rstatus').textContent=S.alert?'ALERT: street ahead':'Nearest crossing: '+Math.round(dist/FT)+' ft';
   evaluate(dist,v,looking);
